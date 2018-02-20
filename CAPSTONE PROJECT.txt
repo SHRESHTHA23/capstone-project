@@ -1,0 +1,201 @@
+hadoop fs -mkdir /user/Jig15688/finalcasestudy
+hadoop fs -copyFromLocal /home/data/CampaignData.csv /user/Jig15688/finalcasestudy
+
+
+
+
+  
+CampaignData = Load 'finalcasestudy/CampaignData.csv' USING PigStorage(',');
+
+
+register /home/data/piggybank.jar;
+define CSVLoader org.apache.pig.piggybank.storage.CSVLoader();
+CampaignData = Load 'finalcasestudy/CampaignData.csv' USING CSVLoader();
+dump1 = limit CampaignData 10;
+dump dump1;
+
+STORE CampaignData INTO '/user/Jig15688/finalcasestudy/pigop' USING PigStorage('|');
+
+
+#filter data
+
+
+register /home/data/piggybank.jar;
+define CSVLoader org.apache.pig.piggybank.storage.CSVLoader();
+clk = Load 'finalcasestudy/pigop' USING CSVLoader();
+ 
+cnt_flg = FOREACH CampaignData generate $0 as clk, $1 as open; 
+STORE cnt_flg INTO '/user/Jig15688/finalcasestudy/cnt_flg' USING PigStorage('|');
+
+
+
+
+gndr_code = FOREACH CampaignData generate $60 as gndr;
+STORE gndr_code INTO '/user/Jig15688/finalcasestudy/gndr_code' USING PigStorage('|');
+
+
+mail_date = FOREACH CampaignData generate $272 as date;
+STORE mail_date INTO '/user/Jig15688/finalcasestudy/mail_date' USING PigStorage('|');
+
+CTOR = FOREACH CampaignData generate $0 as clk, $1 as open, $60 as gender, $272 as date, $101 as income, $4 as asian_cd, $61 as status;
+STORE CTOR INTO '/user/Jig15688/finalcasestudy/CTOR' USING PigStorage('|');
+
+hive
+
+CREATE EXTERNAL TABLE final_case_study (CLICK_FLG string, OPEN_FLG string, I1_GNDR_CODE string,  mailed_date string, TRW_INCOME_CD_V4 string, ASIAN_CD string, I1_INDIV_HHLD_STATUS_CODE string  ) ROW FORMAT DELIMITED FIELDS 
+
+TERMINATED BY '|' LOCATION
+'/user/Jig15688/finalcasestudy/CTOR/';
+
+A. Overall CTOR (use CLICK_FLG   and OPEN_FLG  column) 
+
+Create table Cust_ClickToOpenRatiofinal AS SELECT ROUND(SUM(CASE WHEN CLICK_FLG =
+'Y' THEN 1 ELSE 0 END)/count(*) * 100,2) CTOR FROM final_case_study
+WHERE OPEN_FLG ='Y';Select * from Cust_ClickToOpenRatiofinal;
+
+
+B. CTOR by Gender (use I1_GNDR_CODE   column) 
+Create table Cust_ctorGenderfinal AS SELECT I1_GNDR_CODE, ROUND(SUM(CASE WHEN CLICK_FLG
+= 'Y' THEN 1 ELSE 0 END)/count(*) * 100,2) CTOR FROM final_case_study
+WHERE OPEN_FLG ='Y' GROUP BY I1_GNDR_CODE;
+Select * from Cust_ctorGenderfinal;
+
+
+C. CTOR by Time of the day (use mailed_date column) 
+
+
+Pig mailed date
+
+register /home/data/piggybank.jar;
+define CSVLoader org.apache.pig.piggybank.storage.CSVLoader();
+CampaignData = Load 'finalcasestudy/CampaignData.csv' USING CSVLoader();
+dump1 = limit CampaignData 10;
+dump dump1;
+
+
+CTOR1 = FOREACH CampaignData generate $0 as clk, $1 as open, $60 as gender,$101 as income, $4 as asian_cd, $61 as status, SUBSTRING($272,5,13) As Date,CONCAT('20',SUBSTRING($272,11,13)) As
+Year,(SUBSTRING($272,5,7)=='01' ? 'January' : (
+SUBSTRING($272,5,7)=='02' ? 'February' : (SUBSTRING($272,5,7)=='03' ?
+'March' :(SUBSTRING($272,5,7)=='04' ? 'April'
+:(SUBSTRING($272,5,7)=='05' ? 'May' :(SUBSTRING($272,5,7)=='06' ?
+'June' :(SUBSTRING($272,5,7)=='07' ? 'July' :(SUBSTRING($272,5,7)=='08'
+? 'August' :(SUBSTRING($272,5,7)=='09' ? 'September'
+:(SUBSTRING($272,5,7)=='10' ? 'October' :(SUBSTRING($272,5,7)=='11' ?
+'November' :'December'))))))))))) As Month,SUBSTRING($272,0,3) as
+Day,SUBSTRING($272,14,19) as TimeStamp,SUBSTRING($272,20,22) as
+AMPM;
+dump1 = limit CTOR1 10;
+dump dump1;
+STORE CTOR1 INTO '/user/Jig15688/finalcasestudy/CTOR1' USING PigStorage('|');
+
+CREATE EXTERNAL TABLE final_case_study2 (CLICK_FLG string, OPEN_FLG string, I1_GNDR_CODE string, TRW_INCOME_CD_V4 string, ASIAN_CD string,I1_INDIV_HHLD_STATUS_CODE string, mailed_date string, datepart string, Month string, Day string, TimeStampPart string, AMPM string) ROW FORMAT DELIMITED FIELDS 
+
+TERMINATED BY '|' LOCATION
+'/user/Jig15688/finalcasestudy/CTOR1/';
+
+D. CTOR by Day of the week(use mailed_date column) 
+Create table Cust_ctorDayofWeekfinal AS SELECT Day, ROUND(SUM(CASE WHEN
+CLICK_FLG = 'Y' THEN 1 ELSE 0 END)/count(*) * 100,2) CTOR1 FROM
+final_case_study2 WHERE OPEN_FLG ='Y' GROUP BY Day;
+
+Select * from Cust_ctorDayofWeekfinal;
+
+
+E. CTOR by Month (use mailed_date column) 
+Create table Cust_ctorMonthofYearfinal AS SELECT month, ROUND(SUM(CASE
+WHEN CLICK_FLG = 'Y' THEN 1 ELSE 0 END)/count(*) * 100,2) CTOR1 FROM
+final_case_study2 WHERE OPEN_FLG ='Y' GROUP BY month;
+
+
+
+Create table Cust_ctorTimefinal AS SELECT TimeStampPart, ROUND(SUM(CASE
+WHEN CLICK_FLG = 'Y' THEN 1 ELSE 0 END)/count(*) * 100,2) CTOR1 FROM
+final_case_study2 WHERE OPEN_FLG ='Y' GROUP BY TimeStampPart;
+
+F. CTOR by Lead’s Income Group (use TRW_INCOME_CD_V4 column) 
+
+Create table Cust_ctorSalaryGroupfinal AS SELECT TRW_INCOME_CD_V4, ROUND(SUM(CASE WHEN
+CLICK_FLG = 'Y' THEN 1 ELSE 0 END)/count(*) * 100,2) CTOR1 FROM
+final_case_study2 WHERE OPEN_FLG ='Y' GROUP BY TRW_INCOME_CD_V4;
+
+ G. CTOR by Lead’s Household Status (use I1_INDIV_HHLD_STATUS_CODE  column)
+
+Create table Cust_ctorHouseholdGroupfinal AS SELECT I1_INDIV_HHLD_STATUS_CODE, ROUND(SUM(CASE WHEN
+CLICK_FLG = 'Y' THEN 1 ELSE 0 END)/count(*) * 100,2) CTOR1 FROM
+final_case_study2 WHERE OPEN_FLG ='Y' GROUP BY I1_INDIV_HHLD_STATUS_CODE;
+
+
+H. CTOR by Lead’s Ethnicity (use ASIAN_CD column)
+Create table Cust_ctorEthnicityGroupfinal AS SELECT ASIAN_CD, ROUND(SUM(CASE WHEN
+CLICK_FLG = 'Y' THEN 1 ELSE 0 END)/count(*) * 100,2) CTOR1 FROM
+final_case_study2 WHERE OPEN_FLG ='Y' GROUP BY ASIAN_CD;
+
+#question 2
+
+2. Household Members Information
+A. Find count of leads with information about members of their household. If a  lead has information about 3 members, and another has information about 2  members and another has none, then the answer to this question is 2. (use statcd_hh_mem1  - statcd_hh_mem8     column)
+B.  Find count of total number of household members information is available.For  example, if a lead has 3 household members, and another has about 2  members, and the other has none, then the totalcount of household members  is 3+2+0 = 5.
+C. Find count of household members by type (Head of Household, Spouse etc.).
+D. %age of household members type. For example, if there are 5 Head of  Household, 10 Spouse and 85 in the other categories, then the %age of  Spouses is10.
+
+
+Hive
+
+CREATE EXTERNAL TABLE final_case_study3(statcd_hh_mem1 string, statcd_hh_mem2 string, statcd_hh_mem3 string, statcd_hh_mem4 string, statcd_hh_mem5 string, statcd_hh_mem6 string, statcd_hh_mem7 string, statcd_hh_mem8 string)
+ROW FORMAT DELIMITED FIELDS 
+
+TERMINATED BY '|' LOCATION
+'/user/Jig15688/finalcasestudy/CTOR1/';
+
+A.
+select SUM(CASE WHEN statcd_hh_mem1 != ' ' or statcd_hh_mem2 != ' ' or statcd_hh_mem3 != ' ' or statcd_hh_mem4 != ' '
+ or statcd_hh_mem5 != ' ' or statcd_hh_mem6 != ' ' or statcd_hh_mem7 != ' ' or statcd_hh_mem8 != ' ' THEN 1 ELSE 0 END) from final_case_study3;
+
+B.
+select SUM(CASE WHEN statcd_hh_mem1 != ' ' THEN 1 ELSE 0 END) + SUM(CASE WHEN statcd_hh_mem2 != ' ' THEN 1 ELSE 0 END) + SUM(CASE WHEN statcd_hh_mem3 != ' ' THEN 1 ELSE 0 END) + SUM(CASE WHEN statcd_hh_mem4 != ' ' THEN 1 ELSE 0 END) + SUM(CASE WHEN statcd_hh_mem5 != ' ' THEN 1 ELSE 0 END) + SUM(CASE WHEN statcd_hh_mem6 != ' ' THEN 1 ELSE 0 END) + SUM(CASE WHEN statcd_hh_mem7 != ' ' THEN 1 ELSE 0 END) + SUM(CASE WHEN statcd_hh_mem8 != ' ' THEN 1 ELSE 0 END) from final_case_study3;
+
+C.
+create table household_group as SELECT  SUM(CASE WHEN statcd_hh_mem1 = 'H' THEN 1 ELSE 0 END) + SUM(CASE WHEN statcd_hh_mem2 = 'H' THEN 1 ELSE 0 END) + SUM(CASE WHEN statcd_hh_mem3 = 'H' THEN 1 ELSE 0 END) + SUM(CASE WHEN statcd_hh_mem4 = 'H' THEN 1 ELSE 0 END) + SUM(CASE WHEN statcd_hh_mem5 = 'H' THEN 1 ELSE 0 END) + SUM(CASE WHEN statcd_hh_mem6 = 'H' THEN 1 ELSE 0 END) + SUM(CASE WHEN statcd_hh_mem7 = 'H' THEN 1 ELSE 0 END) + SUM(CASE WHEN statcd_hh_mem8 = 'H' THEN 1 ELSE 0 END) as Head, SUM(CASE WHEN statcd_hh_mem1 = 'W' THEN 1 ELSE 0 END) + SUM(CASE WHEN statcd_hh_mem2 = 'W' THEN 1 ELSE 0 END) + SUM(CASE WHEN statcd_hh_mem3 = 'W' THEN 1 ELSE 0 END) + SUM(CASE WHEN statcd_hh_mem4 = 'W' THEN 1 ELSE 0 END) + SUM(CASE WHEN statcd_hh_mem5 = 'W' THEN 1 ELSE 0 END) + SUM(CASE WHEN statcd_hh_mem6 = 'W' THEN 1 ELSE 0 END) + SUM(CASE WHEN statcd_hh_mem7 = 'W' THEN 1 ELSE 0 END) + SUM(CASE WHEN statcd_hh_mem8 = 'W' THEN 1 ELSE 0 END) as Spouse, SUM(CASE WHEN statcd_hh_mem1 = 'P' THEN 1 ELSE 0 END) + SUM(CASE WHEN statcd_hh_mem2 = 'P' THEN 1 ELSE 0 END) +  SUM(CASE WHEN statcd_hh_mem3 = 'P' THEN 1 ELSE 0 END) + SUM(CASE WHEN statcd_hh_mem4 = 'P' THEN 1 ELSE 0 END) +
+
+SUM(CASE WHEN statcd_hh_mem5 = 'P' THEN 1 ELSE 0 END) + SUM(CASE WHEN statcd_hh_mem6 = 'P' THEN 1 ELSE 0 END) + SUM(CASE WHEN statcd_hh_mem7 = 'P' THEN 1 ELSE 0 END) + SUM(CASE WHEN statcd_hh_mem8 = 'P' THEN 1 ELSE 0 END) as Elderely_Parent, SUM(CASE WHEN statcd_hh_mem1 = 'U' THEN 1 ELSE 0 END) + SUM(CASE WHEN statcd_hh_mem2 = 'U' THEN 1 ELSE 0 END) +  SUM(CASE WHEN statcd_hh_mem3 = 'U' THEN 1 ELSE 0 END) + SUM(CASE WHEN statcd_hh_mem4 = 'U' THEN 1 ELSE 0 END) + SUM(CASE WHEN statcd_hh_mem5 = 'U' THEN 1 ELSE 0 END) + SUM(CASE WHEN statcd_hh_mem6 = 'U' THEN 1 ELSE 0 END) + SUM(CASE WHEN statcd_hh_mem7 = 'U' THEN 1 ELSE 0 END) + SUM(CASE WHEN statcd_hh_mem8 = 'U' THEN 1 ELSE 0 END) as Other_Adult, SUM(CASE WHEN statcd_hh_mem1 = 'Y' THEN 1 ELSE 0 END) + SUM(CASE WHEN statcd_hh_mem2 = 'Y' THEN 1 ELSE 0 END) + SUM(CASE WHEN statcd_hh_mem3 = 'Y' THEN 1 ELSE 0 END) + SUM(CASE WHEN statcd_hh_mem4 = 'Y' THEN 1 ELSE 0 END) + SUM(CASE WHEN statcd_hh_mem5 = 'Y' THEN 1 ELSE 0 END) + SUM(CASE WHEN statcd_hh_mem6 = 'Y' THEN 1 ELSE 0 END) +  SUM(CASE WHEN statcd_hh_mem7 = 'Y' THEN 1 ELSE 0 END) + SUM(CASE WHEN statcd_hh_mem8 = 'Y' THEN 1 ELSE 0 END) as Young_Adult from final_case_study3;
+
+
+D.
+
+select (spouse / (head + spouse + elderely_parent + other_adult + young_adult))*100 from household_group;
+select (head / (head + spouse + elderely_parent + other_adult + young_adult))*100 from household_group;
+select (elderely_parent / (head + spouse + elderely_parent + other_adult + young_adult))*100 from household_group;
+select (other_adult / (head + spouse + elderely_parent + other_adult + young_adult))*100 from household_group;
+select (young_adult / (head + spouse + elderely_parent + other_adult + young_adult))*100 from household_group;
+
+
+#question3
+
+2. Household Members Information
+E. How many known households havechildren? (use PRESENCE_OF_CHLDRN    column) F.   Overall, how many children are there? (use NUMBER_OF_CHLDRN_18_OR_LESS   column  and         PRESENCE_OF_CHLDRN )
+G. How many of the children are male and how many are female? (use GNDR_OF_CHLDRN_0_3  - GNDR_OF_CHLDRN_13_18   column)
+
+
+Household_children = FOREACH CampaignData generate $92 as PRESENCE_OF_CHLDRN, $76 as NUMBER_OF_CHLDRN_18_OR_LESS, $50 as GNDR_OF_CHLDRN_0_3, $51 as GNDR_OF_CHLDRN_10_12, $52 as GNDR_OF_CHLDRN_13_18, $53 as GNDR_OF_CHLDRN_4_6, $54 as GNDR_OF_CHLDRN_7_9;
+
+STORE Household_children INTO '/user/Jig15688/finalcasestudy/Household_children' USING PigStorage('|');
+
+hive
+
+CREATE EXTERNAL TABLE final_case_study4(PRESENCE_OF_CHLDRN string, NUMBER_OF_CHLDRN_18_OR_LESS string, GNDR_OF_CHLDRN_0_3 string, GNDR_OF_CHLDRN_10_12 string, GNDR_OF_CHLDRN_13_18 string, GNDR_OF_CHLDRN_4_6 string, GNDR_OF_CHLDRN_7_9 string) ROW FORMAT DELIMITED FIELDS 
+
+TERMINATED BY '|' LOCATION
+'/user/Jig15688/finalcasestudy/Household_children/';
+
+E.
+select SUM(CASE WHEN PRESENCE_OF_CHLDRN = 'Y' THEN 1 ELSE 0 END) from final_case_study4;
+
+F.
+select SUM(NUMBER_OF_CHLDRN_18_OR_LESS) AS total from final_case_study4;
+select SUM(CASE WHEN GNDR_OF_CHLDRN_0_3 = 'F' THEN 1 ELSE 0 END) + SUM(CASE WHEN  GNDR_OF_CHLDRN_10_12 = 'F' THEN 1 ELSE 0 END) + SUM( CASE WHEN  GNDR_OF_CHLDRN_13_18 = 'F' THEN 1 ELSE 0 END) + SUM(CASE WHEN GNDR_OF_CHLDRN_4_6 ='F' THEN 1 ELSE 0 END) + SUM(CASE WHEN GNDR_OF_CHLDRN_7_9 = 'F' THEN 1 ELSE 0 END) as female from final_case_study4;
+
+G.
+create table gendertype as select SUM(CASE WHEN GNDR_OF_CHLDRN_0_3 = 'F' THEN 1 ELSE 0 END) + SUM(CASE WHEN  GNDR_OF_CHLDRN_10_12 = 'F' THEN 1 ELSE 0 END) + SUM( CASE WHEN  GNDR_OF_CHLDRN_13_18 = 'F' THEN 1 ELSE 0 END) + SUM(CASE WHEN GNDR_OF_CHLDRN_4_6 ='F' THEN 1 ELSE 0 END) + SUM(CASE WHEN GNDR_OF_CHLDRN_7_9 = 'F' THEN 1 ELSE 0 END) as female, SUM(CASE WHEN GNDR_OF_CHLDRN_0_3 = 'M' THEN 1 ELSE 0 END) + SUM(CASE WHEN  GNDR_OF_CHLDRN_10_12 = 'M' THEN 1 ELSE 0 END) + SUM( CASE WHEN  GNDR_OF_CHLDRN_13_18 = 'M' THEN 1 ELSE 0 END)  + SUM(CASE WHEN GNDR_OF_CHLDRN_4_6 ='M' THEN 1 ELSE 0 END) + SUM(CASE WHEN GNDR_OF_CHLDRN_7_9 = 'M' THEN 1 ELSE 0 END) as male from final_case_study4 ;
+
+
+
